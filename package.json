@@ -1,0 +1,15 @@
+{
+  "name": "fish-forecast",
+  "version": "1.0.0",
+  "description": "Daily fishing condition grading tool powered by Open-Meteo",
+  "main": "scheduler.js",
+  "scripts": {
+    "start": "node scheduler.js",
+    "grade": "node grade-cli.js",
+    "dev": "npx serve ."
+  },
+  "dependencies": {
+    "node-cron": "^3.0.3",
+    "node-fetch": "^3.3.2"
+  }
+}

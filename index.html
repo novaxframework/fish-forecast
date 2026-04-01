@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🎣 Fish Forecast</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="header-inner">
+        <span class="logo">🎣</span>
+        <div>
+          <h1>Fish Forecast</h1>
+          <p class="tagline">7-day fishing condition grades — powered by weather science</p>
+        </div>
+      </div>
+    </header>
+
+    <main class="main">
+
+      <!-- Location Bar -->
+      <section class="location-bar">
+        <div class="location-search-row">
+          <input id="locationInput" type="text" placeholder="Search city, zip code, or lake..." autocomplete="off" />
+          <button id="searchBtn">🔍 Search</button>
+          <button id="geoBtn" title="Use my location">📍</button>
+        </div>
+
+        <!-- Preset Quick-Select -->
+        <div class="preset-row">
+          <span class="preset-label">Quick:</span>
+          <button class="preset-btn" data-loc="Orlando, FL">🐠 Orlando</button>
+          <button class="preset-btn" data-loc="Denver, CO">🏔️ Denver</button>
+          <button class="preset-btn" data-loc="Nashville, TN">🎸 Nashville</button>
+          <button class="preset-btn" data-loc="Seattle, WA">🌧️ Seattle</button>
+          <button class="preset-btn" data-loc="Miami, FL">🌴 Miami</button>
+          <button class="preset-btn" data-loc="Minneapolis, MN">❄️ Minneapolis</button>
+        </div>
+      </section>
+
+      <!-- Active Location Banner -->
+      <div class="active-location" id="activeBanner" style="display:none">
+        <span id="activeBannerText">📍 —</span>
+        <span class="active-location-coords" id="activeBannerCoords"></span>
+      </div>
+
+      <!-- 7-Day Forecast Strip (clickable cards) -->
+      <section class="outlook" id="outlookSection">
+        <h3 class="section-title">📅 7-Day Forecast</h3>
+        <div class="outlook-grid" id="outlookGrid">
+          <div class="outlook-placeholder">Search a location to load your 7-day forecast</div>
+        </div>
+      </section>
+
+      <!-- Today's Detail Card (grade + breakdown) -->
+      <section class="detail-panel" id="detailPanel">
+        <div class="detail-header">
+          <div class="grade-circle" id="gradeCircle">
+            <span class="grade-letter" id="gradeLetter">—</span>
+          </div>
+          <div class="grade-info">
+            <h2 id="gradeLabel">Select a day above to see details</h2>
+            <p id="gradeDate" class="grade-date"></p>
+            <p id="gradeLocation" class="grade-location"></p>
+            <div class="grade-score-row">
+              <span class="grade-score-label">Score:</span>
+              <span id="gradeScore" class="grade-score-value">—</span>
+              <span class="grade-score-max">/ 100</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Condition Breakdown -->
+      <section class="conditions" id="conditionsSection">
+        <h3 class="section-title">🔬 Condition Breakdown</h3>
+        <div class="conditions-grid">
+
+          <div class="condition-row" id="row-pressure">
+            <div class="condition-icon">🌡️</div>
+            <div class="condition-info">
+              <span class="condition-name">Barometric Pressure</span>
+              <span class="condition-value" id="val-pressure">—</span>
+            </div>
+            <div class="condition-pts" id="pts-pressure">+0</div>
+            <div class="condition-bar-wrap">
+              <div class="condition-bar" id="bar-pressure" style="width:0%"></div>
+            </div>
+          </div>
+
+          <div class="condition-row" id="row-wind">
+            <div class="condition-icon">💨</div>
+            <div class="condition-info">
+              <span class="condition-name">Wind Speed</span>
+              <span class="condition-value" id="val-wind">—</span>
+            </div>
+            <div class="condition-pts" id="pts-wind">+0</div>
+            <div class="condition-bar-wrap">
+              <div class="condition-bar" id="bar-wind" style="width:0%"></div>
+            </div>
+          </div>
+
+          <div class="condition-row" id="row-moon">
+            <div class="condition-icon">🌕</div>
+            <div class="condition-info">
+              <span class="condition-name">Moon Phase</span>
+              <span class="condition-value" id="val-moon">—</span>
+            </div>
+            <div class="condition-pts" id="pts-moon">+0</div>
+            <div class="condition-bar-wrap">
+              <div class="condition-bar" id="bar-moon" style="width:0%"></div>
+            </div>
+          </div>
+
+          <div class="condition-row" id="row-cloud">
+            <div class="condition-icon">☁️</div>
+            <div class="condition-info">
+              <span class="condition-name">Cloud Cover</span>
+              <span class="condition-value" id="val-cloud">—</span>
+            </div>
+            <div class="condition-pts" id="pts-cloud">+0</div>
+            <div class="condition-bar-wrap">
+              <div class="condition-bar" id="bar-cloud" style="width:0%"></div>
+            </div>
+          </div>
+
+          <div class="condition-row" id="row-temp">
+            <div class="condition-icon">🌡️</div>
+            <div class="condition-info">
+              <span class="condition-name">Temperature</span>
+              <span class="condition-value" id="val-temp">—</span>
+            </div>
+            <div class="condition-pts" id="pts-temp">+0</div>
+            <div class="condition-bar-wrap">
+              <div class="condition-bar" id="bar-temp" style="width:0%"></div>
+            </div>
+          </div>
+
+          <div class="condition-row" id="row-precip">
+            <div class="condition-icon">🌧️</div>
+            <div class="condition-info">
+              <span class="condition-name">Precipitation</span>
+              <span class="condition-value" id="val-precip">—</span>
+            </div>
+            <div class="condition-pts" id="pts-precip">+0</div>
+            <div class="condition-bar-wrap">
+              <div class="condition-bar" id="bar-precip" style="width:0%"></div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- Best Times to Fish -->
+      <section class="best-times" id="bestTimesSection">
+        <h3 class="section-title">🕐 Best Times to Fish</h3>
+        <div class="time-chips" id="timeChips">
+          <span class="time-chip placeholder">Run forecast to see best windows</span>
+        </div>
+      </section>
+
+    </main>
+
+    <footer class="footer">
+      <p>Updated daily • Weather via <a href="https://open-meteo.com" target="_blank">Open-Meteo</a> • Built with ❤️ for anglers</p>
+    </footer>
+  </div>
+
+  <!-- Loader -->
+  <div class="loader-overlay" id="loaderOverlay">
+    <div class="loader-box">
+      <div class="spinner"></div>
+      <p>Fetching conditions...</p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
