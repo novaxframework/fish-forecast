@@ -53,9 +53,9 @@ SCOPES      = ['https://www.googleapis.com/auth/calendar.events']
 TOKEN_FILE  = os.path.join(os.path.dirname(__file__), 'token.json')
 CREDS_FILE  = os.path.join(os.path.dirname(__file__), 'credentials.json')
 CALENDAR_ID = os.environ.get('CALENDAR_ID', 'primary')
-LAT         = float(os.environ.get('FISH_LAT',  '36.1627'))
-LON         = float(os.environ.get('FISH_LON',  '-86.7816'))
-LOCATION    = os.environ.get('FISH_LOCATION', 'Nashville, TN')
+LAT         = float(os.environ.get('FISH_LAT',  '30.2555'))
+LON         = float(os.environ.get('FISH_LON',  '-88.0849'))
+LOCATION    = os.environ.get('FISH_LOCATION', 'Dauphin Island, AL')
 
 WEIGHTS = {
     'pressure': 20,
