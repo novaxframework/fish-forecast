@@ -33,4 +33,5 @@ jobs:
           FISH_LON: '-88.0849'
           FISH_LOCATION: 'Dauphin Island, AL'
           CALENDAR_ID: ${{ secrets.CALENDAR_ID }}
+          GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
         run: python calendar_sync.py
