@@ -10,16 +10,17 @@ event with:
 
 Setup:
   1. pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib requests
-  2. Create a Google Cloud project, enable the Calendar API
-  3. Download credentials.json to this directory
-  4. Run once to authorize: python calendar_sync.py --auth
-  5. Schedule daily (GitHub Actions workflow or cron)
+  2. Place credentials.json in this directory (download from Google Cloud Console)
+  3. Run once to authorize: python calendar_sync.py --auth
+     → Opens a URL in your browser, paste the code back in the terminal
+  4. Schedule daily (GitHub Actions workflow or cron)
 
 Env vars (optional):
-  FISH_LAT        Latitude  (default: 36.1627 — Nashville)
-  FISH_LON        Longitude (default: -86.7816)
-  FISH_LOCATION   Display name (default: Nashville, TN)
+  FISH_LAT        Latitude  (default: 30.2555)
+  FISH_LON        Longitude (default: -88.0849)
+  FISH_LOCATION   Display name (default: Dauphin Island, AL)
   CALENDAR_ID     Google Calendar ID (default: primary)
+  GOOGLE_TOKEN    Full token.json contents as a string (for GitHub Actions secrets)
 
 Cron example (6 AM daily):
   0 6 * * * cd /path/to/fish-forecast && python calendar_sync.py
@@ -49,9 +50,13 @@ except ImportError:
     REQUESTS_AVAILABLE = False
 
 # ── Config ───────────────────────────────────────────────────
-SCOPES      = ['https://www.googleapis.com/auth/calendar.events']
-TOKEN_FILE  = os.path.join(os.path.dirname(__file__), 'token.json')
-CREDS_FILE  = os.path.join(os.path.dirname(__file__), 'credentials.json')
+SCOPES = ['https://www.googleapis.com/auth/calendar']
+TOKEN_FILE  = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'token.json')
+CREDS_FILE  = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'credentials.json')
+# Set CALENDAR_ID to the calendar's ID (not its name).
+# To find it: Google Calendar → Settings → [calendar name] → Calendar ID
+# It looks like: abc123xyz@group.calendar.google.com
+# Set via env var:  set CALENDAR_ID=your_calendar_id_here
 CALENDAR_ID = os.environ.get('CALENDAR_ID', 'primary')
 LAT         = float(os.environ.get('FISH_LAT',  '30.2555'))
 LON         = float(os.environ.get('FISH_LON',  '-88.0849'))
@@ -67,6 +72,7 @@ WEIGHTS = {
 }
 
 GRADE_COLOR = {'A': '2', 'B': '9', 'C': '5', 'D': '6', 'F': '11'}
+
 
 # ── Moon phase (Meeus approximation) ─────────────────────────
 def get_moon_phase(d: date) -> float:
@@ -130,7 +136,7 @@ def fetch_weather(lat: float, lon: float) -> dict:
         'windspeed_unit'    : 'mph',
         'precipitation_unit': 'inch',
         'timezone'          : 'auto',
-        'forecast_days'     : 1,
+        'forecast_days'     : 7,
     }
     r = requests.get(url, params=params, timeout=10)
     r.raise_for_status()
@@ -138,15 +144,18 @@ def fetch_weather(lat: float, lon: float) -> dict:
 
 
 # ── Grade today ───────────────────────────────────────────────
-def grade_today(weather: dict, today: date) -> dict:
+def grade_today(weather: dict, today: date, day_index: int = 0) -> dict:
     h    = weather['hourly']
     avg  = lambda arr, a, b: sum(arr[a:b]) / max(len(arr[a:b]), 1)
     sumv = lambda arr, a, b: sum(arr[a:b])
 
-    # 1. Pressure trend (6-12 vs 0-6)
+    # Each day occupies 24 hourly slots; offset by day_index
+    base = day_index * 24
+
+    # 1. Pressure trend (6-12 vs 0-6) for this day
     pressures   = h['surface_pressure']
-    morning_avg = avg(pressures, 6, 12)
-    prev_avg    = avg(pressures, 0, 6)
+    morning_avg = avg(pressures, base + 6, base + 12)
+    prev_avg    = avg(pressures, base + 0, base + 6)
     delta       = morning_avg - prev_avg
     press_score = (1.0 if delta > 1.5 else 0.85 if delta > 0.5
                    else 0.65 if delta > -0.5 else 0.40 if delta > -1.5 else 0.20)
@@ -155,7 +164,7 @@ def grade_today(weather: dict, today: date) -> dict:
     press_val   = f'{morning_avg:.1f} hPa — {press_trend}'
 
     # 2. Wind (6-18)
-    avg_wind    = avg(h['windspeed_10m'], 6, 18)
+    avg_wind    = avg(h['windspeed_10m'], base + 6, base + 18)
     wind_score  = (1.0 if avg_wind < 5 else 0.85 if avg_wind < 10
                    else 0.65 if avg_wind < 15 else 0.40 if avg_wind < 20 else 0.15)
     wind_val    = f'{avg_wind:.1f} mph avg'
@@ -166,7 +175,7 @@ def grade_today(weather: dict, today: date) -> dict:
     moon_val         = f'{moon_name} ({phase * 100:.0f}% cycle)'
 
     # 4. Cloud cover (6-18)
-    avg_cloud   = avg(h['cloudcover'], 6, 18)
+    avg_cloud   = avg(h['cloudcover'], base + 6, base + 18)
     cloud_score = (1.0 if 30 <= avg_cloud <= 80
                    else 0.65 if avg_cloud > 80
                    else 0.70 if avg_cloud >= 10 else 0.50)
@@ -176,7 +185,7 @@ def grade_today(weather: dict, today: date) -> dict:
     cloud_val   = f'{avg_cloud:.0f}% — {cloud_label}'
 
     # 5. Temperature (6-18)
-    avg_c       = avg(h['temperature_2m'], 6, 18)
+    avg_c       = avg(h['temperature_2m'], base + 6, base + 18)
     temp_f      = avg_c * 9 / 5 + 32
     temp_score  = (1.0 if 55 <= temp_f <= 75
                    else 0.75 if (45 <= temp_f < 55 or 75 < temp_f <= 85)
@@ -185,7 +194,7 @@ def grade_today(weather: dict, today: date) -> dict:
     temp_val    = f'{temp_f:.1f}F ({avg_c:.1f}C) avg daytime'
 
     # 6. Precipitation (6-18)
-    total_precip = sumv(h['precipitation'], 6, 18)
+    total_precip = sumv(h['precipitation'], base + 6, base + 18)
     precip_score = (1.0 if total_precip == 0
                     else 0.85 if total_precip < 0.1
                     else 0.60 if total_precip < 0.5
@@ -204,22 +213,19 @@ def grade_today(weather: dict, today: date) -> dict:
     grade = ('A' if total >= 85 else 'B' if total >= 70
              else 'C' if total >= 55 else 'D' if total >= 40 else 'F')
 
-    # Hi / Lo
     d    = weather.get('daily', {})
-    hi_c = d.get('temperature_2m_max', [None])[0]
-    lo_c = d.get('temperature_2m_min', [None])[0]
+    hi_c = d.get('temperature_2m_max', [None] * 7)[day_index]
+    lo_c = d.get('temperature_2m_min', [None] * 7)[day_index]
     hi_f = f'{hi_c * 9/5 + 32:.0f}F' if hi_c is not None else '--'
     lo_f = f'{lo_c * 9/5 + 32:.0f}F' if lo_c is not None else '--'
 
-    # Solunar windows
     def parse_hour(s):
-        if not s:
-            return None
+        if not s: return None
         dt = datetime.fromisoformat(s)
         return dt.hour + dt.minute / 60
 
-    sunrise_str = d.get('sunrise', [None])[0]
-    sunset_str  = d.get('sunset',  [None])[0]
+    sunrise_str = d.get('sunrise', [None] * 7)[day_index]
+    sunset_str  = d.get('sunset',  [None] * 7)[day_index]
     sunrise_h   = parse_hour(sunrise_str) or 6.5
     sunset_h    = parse_hour(sunset_str)  or 19.5
     windows     = solunar_windows(phase, sunrise_h, sunset_h)
@@ -243,16 +249,15 @@ def grade_today(weather: dict, today: date) -> dict:
 
 
 # ── Build calendar event ──────────────────────────────────────
-def build_event(result: dict, today: date) -> dict:
+def build_event(result: dict, forecast_date: date) -> dict:
     g       = result['grade']
     total   = result['total']
     windows = result['windows']
     details = result['details']
     scores  = result['scores']
 
-    # Title: grade + top 2 best time windows (strip the parenthetical note)
     best_times = ', '.join(w.split('(')[0].strip() for w in windows[:2])
-    title = f'Fishing Forecast: {g} | Best: {best_times}'
+    title = f'🎣 Fishing Forecast: {g} | Best: {best_times}'
 
     grade_labels = {
         'A': 'Outstanding — Get out there!',
@@ -282,10 +287,10 @@ def build_event(result: dict, today: date) -> dict:
         f'  Temp      : {details["temp"]}  [{scores["temp"]}/{WEIGHTS["temp"]} pts]',
         f'  Precip    : {details["precip"]}  [{scores["precip"]}/{WEIGHTS["precip"]} pts]',
         '',
-        'Generated by Fish Forecast',
+        'Generated by Fish Forecast — Nova Agent',
     ]
 
-    today_str = today.isoformat()
+    today_str = forecast_date.isoformat()
     return {
         'summary'    : title,
         'description': '\n'.join(lines),
@@ -300,28 +305,88 @@ def build_event(result: dict, today: date) -> dict:
 
 
 # ── Google Calendar auth ──────────────────────────────────────
-def get_credentials():
+def get_credentials(force_reauth=False):
+    """
+    Auth strategy (in priority order):
+      1. GOOGLE_TOKEN env var — full token JSON as a string (for GitHub Actions)
+      2. token.json file — cached from a previous --auth run
+      3. credentials.json — triggers interactive OAuth via console URL+code paste
+    """
     creds = None
-    if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
+
+    # ── Strategy 1: env var (GitHub Actions / CI) ─────────────
+    token_env = os.environ.get('GOOGLE_TOKEN')
+    if token_env and not force_reauth:
+        try:
+            token_data = json.loads(token_env)
+            creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+            print('   Auth: using GOOGLE_TOKEN env var')
+        except Exception as e:
+            print(f'   Warning: GOOGLE_TOKEN env var invalid ({e}), falling back to file')
+            creds = None
+
+    # ── Strategy 2: token.json file ───────────────────────────
+    if not creds and os.path.exists(TOKEN_FILE) and not force_reauth:
+        try:
+            creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+            print(f'   Auth: using cached token ({TOKEN_FILE})')
+        except Exception as e:
+            print(f'   Warning: token.json invalid ({e}), re-authenticating')
+            creds = None
+
+    # ── Refresh if expired ────────────────────────────────────
+    if creds and creds.expired and creds.refresh_token:
+        try:
             creds.refresh(Request())
-        else:
-            if not os.path.exists(CREDS_FILE):
-                print('ERROR: credentials.json not found.')
-                print('Download from Google Cloud Console -> APIs -> Credentials -> OAuth 2.0')
-                sys.exit(1)
-            flow  = InstalledAppFlow.from_client_secrets_file(CREDS_FILE, SCOPES)
+            print('   Auth: token refreshed')
+            # Save refreshed token back to file
+            with open(TOKEN_FILE, 'w') as f:
+                f.write(creds.to_json())
+        except Exception as e:
+            print(f'   Warning: token refresh failed ({e}), re-authenticating')
+            creds = None
+
+    # ── Strategy 3: interactive OAuth via console ─────────────
+    if not creds or not creds.valid:
+        if not os.path.exists(CREDS_FILE):
+            print('\n❌ ERROR: credentials.json not found.')
+            print('   Download from: Google Cloud Console → APIs & Services → Credentials')
+            print(f'   Expected at: {CREDS_FILE}')
+            sys.exit(1)
+
+        print('\n🔐 Google Calendar authorization required.')
+        print('   Opening OAuth flow...\n')
+
+        flow = InstalledAppFlow.from_client_secrets_file(CREDS_FILE, SCOPES)
+
+        # Try run_local_server first (opens browser automatically).
+        # If that fails (SSH/headless), fall back to manual copy-paste.
+        try:
             creds = flow.run_local_server(port=0)
+        except Exception:
+            # Manual fallback: print URL, user pastes code back
+            import webbrowser
+            auth_url, _ = flow.authorization_url(prompt='consent')
+            print('\n  Could not open browser automatically.')
+            print('  Open this URL in your browser:\n')
+            print(f'  {auth_url}\n')
+            code = input('  Paste the authorization code here: ').strip()
+            flow.fetch_token(code=code)
+            creds = flow.credentials
+
+        # Save token for future runs
         with open(TOKEN_FILE, 'w') as f:
             f.write(creds.to_json())
+        print(f'\n✅ Token saved to {TOKEN_FILE}')
+        print('   Copy token.json contents into GOOGLE_TOKEN secret for GitHub Actions.')
+        print(f'   Contents:\n{creds.to_json()}\n')
+
     return creds
 
 
-def find_existing_event(service, today_str: str):
+def find_existing_event(service, today_str: str, calendar_id: str = 'primary'):
     events = service.events().list(
-        calendarId   = CALENDAR_ID,
+        calendarId   = calendar_id,
         timeMin      = today_str + 'T00:00:00Z',
         timeMax      = today_str + 'T23:59:59Z',
         singleEvents = True,
@@ -332,66 +397,99 @@ def find_existing_event(service, today_str: str):
 
 
 # ── Main ──────────────────────────────────────────────────────
-def run(dry_run=False):
+def get_calendar_id(service):
+    """
+    Find the 'Fish Forecast' calendar by name.
+    Falls back to CALENDAR_ID env var, then 'primary'.
+    """
+    # If user explicitly set CALENDAR_ID env var (not default 'primary'), use it
+    if os.environ.get('CALENDAR_ID') and os.environ.get('CALENDAR_ID') != 'primary':
+        return os.environ['CALENDAR_ID']
+
+    # Search for a calendar named 'Fish Forecast'
+    calendars = service.calendarList().list().execute()
+    for cal in calendars.get('items', []):
+        if 'fish forecast' in cal.get('summary', '').lower():
+            print(f'   Found calendar: {cal["summary"]} ({cal["id"]})')
+            return cal['id']
+
+    # Not found — create it
+    print('   Creating Fish Forecast calendar...')
+    new_cal = service.calendars().insert(body={
+        'summary' : 'Fish Forecast',
+        'timeZone': 'America/Chicago',
+    }).execute()
+    print(f'   ✅ Created calendar: {new_cal["id"]}')
+    print(f'   Tip: set CALENDAR_ID={new_cal["id"]} to skip auto-detect next time')
+    return new_cal['id']
+
+
+def run(dry_run=False, force_reauth=False):
     today = date.today()
     print(f'\n🎣 Fish Forecast Calendar Sync — {datetime.now().strftime("%Y-%m-%d %H:%M")}')
     print(f'   Location : {LOCATION} ({LAT}, {LON})')
+    print(f'   Fetching 7-day weather...')
 
-    print('   Fetching weather...')
     weather = fetch_weather(LAT, LON)
 
-    print('   Grading conditions...')
-    result = grade_today(weather, today)
-
-    g, total = result['grade'], result['total']
-    print(f'   Grade    : {g} ({total}/100)')
-    print('   Best windows:')
-    for w in result['windows']:
-        print(f'     - {w}')
-
-    event = build_event(result, today)
-
     if dry_run:
-        print('\n[DRY RUN] Would create/update event:')
-        print(f'  Title : {event["summary"]}')
-        print(f'  Date  : {event["start"]["date"]}')
-        print(f'  Color : {event["colorId"]}')
-        print('\nFull description preview:')
-        print(event['description'])
+        print('\n[DRY RUN] 7-day forecast preview:\n')
+        for i in range(7):
+            from datetime import timedelta
+            forecast_date = today + timedelta(days=i)
+            result = grade_today(weather, forecast_date, day_index=i)
+            event  = build_event(result, forecast_date)
+            label  = 'TODAY' if i == 0 else forecast_date.strftime('%a %b %d')
+            print(f'  {label}: {event["summary"]}')
+        print()
         return
 
     if not GOOGLE_AVAILABLE:
-        print('\nERROR: Google API libraries not installed.')
-        print('Run: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib')
+        print('\n❌ ERROR: Google API libraries not installed.')
+        print('   Run: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib')
         sys.exit(1)
 
-    creds    = get_credentials()
-    service  = build('calendar', 'v3', credentials=creds)
-    existing = find_existing_event(service, today.isoformat())
+    creds      = get_credentials(force_reauth=force_reauth)
+    service    = build('calendar', 'v3', credentials=creds)
+    calendar_id = get_calendar_id(service)
+    print(f'   Calendar ID: {calendar_id}')
 
-    if existing:
-        updated = service.events().update(
-            calendarId=CALENDAR_ID, eventId=existing['id'], body=event
-        ).execute()
-        print(f'   Updated event: {updated.get("htmlLink")}')
-    else:
-        created = service.events().insert(
-            calendarId=CALENDAR_ID, body=event
-        ).execute()
-        print(f'   Created event: {created.get("htmlLink")}')
+    from datetime import timedelta
+    results = []
+    for i in range(7):
+        forecast_date = today + timedelta(days=i)
+        result = grade_today(weather, forecast_date, day_index=i)
+        event  = build_event(result, forecast_date)
+        label  = 'Today' if i == 0 else forecast_date.strftime('%a %b %d')
+
+        # Find existing event for this date
+        existing = find_existing_event(service, forecast_date.isoformat(), calendar_id)
+
+        if existing:
+            updated = service.events().update(
+                calendarId=calendar_id, eventId=existing['id'], body=event
+            ).execute()
+            print(f'   ✅ {label}: Updated — {result["grade"]} ({result["total"]}/100)')
+        else:
+            created = service.events().insert(
+                calendarId=calendar_id, body=event
+            ).execute()
+            print(f'   ✅ {label}: Created — {result["grade"]} ({result["total"]}/100)')
+
+        results.append(result)
+
+    print(f'\n🎣 Done — 7 events written to Fish Forecast calendar')
+    return results
 
 
 def main():
     parser = argparse.ArgumentParser(description='Fish Forecast -> Google Calendar')
-    parser.add_argument('--dry-run', action='store_true', help='Preview without writing to calendar')
-    parser.add_argument('--auth',    action='store_true', help='Force re-authentication')
+    parser.add_argument('--dry-run', action='store_true',
+                        help='Preview without writing to calendar')
+    parser.add_argument('--auth',    action='store_true',
+                        help='Force re-authentication (ignores cached token)')
     args = parser.parse_args()
-
-    if args.auth and os.path.exists(TOKEN_FILE):
-        os.remove(TOKEN_FILE)
-        print('Removed cached token. Will re-authenticate on next run.')
-
-    run(dry_run=args.dry_run)
+    run(dry_run=args.dry_run, force_reauth=args.auth)
 
 
 if __name__ == '__main__':
