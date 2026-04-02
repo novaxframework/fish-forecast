@@ -1,1 +1,36 @@
+name: Daily Fishing Forecast
 
+on:
+  schedule:
+    - cron: '0 11 * * *'  # 6:00 AM CST (UTC-5) / 11:00 AM UTC
+  workflow_dispatch:       # Allow manual trigger from GitHub Actions tab
+
+jobs:
+  fish-forecast:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests google-auth google-auth-oauthlib google-api-python-client python-dotenv ephem
+
+      - name: Write Google credentials
+        run: |
+          echo '${{ secrets.GOOGLE_CREDENTIALS }}' > credentials.json
+          echo '${{ secrets.GOOGLE_TOKEN }}' > token.json
+
+      - name: Run Fishing Forecast + Calendar Sync
+        env:
+          FISH_LAT: '30.2555'
+          FISH_LON: '-88.0849'
+          FISH_LOCATION: 'Dauphin Island, AL'
+          CALENDAR_ID: ${{ secrets.CALENDAR_ID }}
+        run: python calendar_sync.py
